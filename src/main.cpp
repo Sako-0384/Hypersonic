@@ -9,8 +9,7 @@ using namespace std;
 const int dx[4] = {1,0,-1,0};
 const int dy[4] = {0,1,0,-1};
 
-int main()
-{
+int main() {
     int width;
     int height;
     int myId;
