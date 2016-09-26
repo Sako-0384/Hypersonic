@@ -9,6 +9,46 @@ using namespace std;
 const int dx[4] = {1,0,-1,0};
 const int dy[4] = {0,1,0,-1};
 
+class Vector2i {
+public:
+    int x, y;
+
+    Vector2i(int ix = 0, int iy = 0)
+            : x(ix), y(iy) {}
+};
+
+class Entity {
+public:
+    int owner;
+    Vector2i pos;
+
+    Entity(int o, Vector2i p)
+            : owner(o), pos(p) {}
+};
+
+class Player : public Entity {
+public:
+    Player(int o, Vector2i p)
+            : Entity(o, p) {}
+};
+
+class Bomb : public Entity {
+public:
+    Bomb(int o, Vector2i p)
+            : Entity(o, p) {}
+};
+
+class Item : public Entity {
+public:
+    Item(Vector2i p)
+            : Entity(0, p) {}
+};
+
+class State {
+public:
+
+};
+
 int main() {
     int width;
     int height;
