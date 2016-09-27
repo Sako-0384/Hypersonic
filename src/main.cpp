@@ -98,7 +98,7 @@ public:
 
 class State {
 public:
-    State() : dead(false) {
+    State() : dead(false), evaluated(false) {
     }
 
     int myId;
@@ -111,6 +111,7 @@ public:
     Player players[2];
     int boxesBroke;
     bool dead;
+    double value;
 
     array<Bomb, 16>::iterator findBomb(int x, int y) const {
         int i=0;
@@ -134,43 +135,54 @@ public:
 };
 
 double evalState(const State &s) {
-    double res = 0;
+    if(s.dead) return 0;
+    double res = 1.0;
+
+    int boxToBeBroken = 0;
 
     bool checked[11][13] = {};
+    int d[11][13] = {};
+
     auto it = s.bombs.begin();
-    for (int i=0; i<s.bs; i++, it++) {
-        if (it->owner != s.myId) continue;
+    for (int n=0; n<s.bs; n++, it++) {
+        d[it->pos.y][it->pos.x] = max(d[it->pos.y][it->pos.x],8 - it->count);
         for (int i = 0; i < 4; i++) {
             for (int j = 1; j < it->range; j++) {
                 if (it->pos.x + dx[i] * j < 0 || it->pos.x + dx[i] * j >= s.f.width
-                    || it->pos.y + dy[i] * j < 0 || it->pos.y + dy[i] * j >= s.f.height)
+                    || it->pos.y + dy[i] * j < 0 || it->pos.y + dy[i] * j >= s.f.height
+                    || s.f.getType(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j) == Field::Wall)
                     break;
-                else if (!checked[it->pos.x + dx[i] * j][it->pos.y + dy[i] * j] &&
+                else {
+                    if (!checked[it->pos.x + dx[i] * j][it->pos.y + dy[i] * j] &&
+                        it->owner != s.myId &&
                         (s.f.getType(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j) == Field::EmptyBox
-                         ||s.f.getType(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j) == Field::ItemBox1
-                         ||s.f.getType(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j) == Field::ItemBox2)) {
-                    res += 8.0 * ((double)(8 - it->count + 1) / 4.0 + 6);
-                    checked[it->pos.x + dx[i] * j][it->pos.y + dy[i] * j] = true;
-                    break;
-                } else if (s.findBomb(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j) !=
-                           s.bombs.end()) {
-                    if (s.findBomb(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j)->owner
-                        == s.myId) {
-                        res += 4.0;
+                         || s.f.getType(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j) == Field::ItemBox1
+                         || s.f.getType(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j) == Field::ItemBox2)) {
+                        boxToBeBroken++;
+                        checked[it->pos.x + dx[i] * j][it->pos.y + dy[i] * j] = true;
+                        break;
+                    } else if (s.findBomb(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j) != s.bombs.end()
+                               && it->owner != s.myId) {
+                        if (s.findBomb(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j)->owner
+                            == s.myId) {
+                            res += 0.1;
+                        } else {
+                            res -= 0.01;
+                        }
+                        break;
+                    } else if (s.findItem(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j) != s.items.end()
+                               && it->owner != s.myId) {
+                        res -= 0.005;
+                        break;
                     } else {
-                        res -= 2.0;
+                        d[it->pos.y + dy[i] * j][it->pos.x + dx[i] * j] = max(d[it->pos.y + dy[i] * j][it->pos.x + dx[i] * j],8 - it->count);
                     }
-                    break;
-                } else if (s.findItem(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j) !=
-                           s.items.end()) {
-                    res -= 0.3;
-                    break;
                 }
             }
         }
+    }
 
         //cerr << it->pos.x << " " << it->pos.y << ": " << res << endl;
-    }
 
 
     /*
@@ -183,17 +195,50 @@ double evalState(const State &s) {
     */
 
 
-    res += (double) s.boxesBroke * 64.0;
-    res += (double) s.players[s.myId].numBombs * 1.0;
-    res += (double) s.players[s.myId].xpRange * 1.0;
-    res += (double) (s.players[s.myId].numBombs - s.players[s.myId].remainingBombs) * 0.2;
+    boxToBeBroken += s.boxesBroke;
+    res += (double) s.players[s.myId].numBombs * 0.02;
+    res += (double) s.players[s.myId].xpRange * 0.02;
+    //res += (double) (s.players[s.myId].numBombs - s.players[s.myId].remainingBombs) * 0.2;
+
+    queue < pair< int, pair<int, int> > > run;
+
+    run.push(make_pair(0, make_pair(s.players[s.myId].pos.x, s.players[s.myId].pos.y)));
+
+    while(!run.empty()) {
+        auto p = run.front();
+        run.pop();
+
+        if (p.first>=8-d[p.second.first][p.second.second])
+            continue;
+
+        if (d[p.second.first][p.second.second]==0) {
+            //res += 0.8;
+            break;
+        }
+
+        if (p.first==8) {
+            break;
+        }
+
+        for (int i=0;i<4;i++) {
+            if(!(p.second.first + dx[i] < 0
+                || p.second.first + dx[i] >= 13
+                || p.second.second + dy[i] < 0
+                || p.second.second + dy[i] >= 11
+                || s.f.getType(p.second.first + dx[i], p.second.second + dy[i]) != Field::Empty)) {
+                run.push(make_pair(p.first++, make_pair(p.second.first + dx[i],p.second.second + dy[i])));
+            }
+        }
+    }
+
+    res *= boxToBeBroken * boxToBeBroken;
 
     for (int i = 0; i < s.f.height; i++) {
         for (int j = 0; j < s.f.width; j++) {
             if (s.f.getType(j, i) == Field::EmptyBox
                 ||s.f.getType(j, i) == Field::ItemBox1
                 ||s.f.getType(j, i) == Field::ItemBox2) {
-                res -= (abs(j - s.players[s.myId].pos.x) + abs(i - s.players[s.myId].pos.y)) * 0.2;
+                res -= (abs(j - s.players[s.myId].pos.x) + abs(i - s.players[s.myId].pos.y)) * 0.1;
             }
         }
     }
@@ -209,7 +254,7 @@ public:
         if (r.first->dead&&l.first->dead) return false;
         if (r.first->dead) return true;
         if (l.first->dead) return false;
-        return evalState(*(l.first)) > evalState(*(r.first));
+        return l.first->value > r.first->value;
     }
 };
 
@@ -241,10 +286,16 @@ State *blow(const State &s) {
         auto it = res->findBomb(blowQ.front().first, blowQ.front().second);
         blowQ.pop();
         if (it == res->bombs.end()) continue;
+
+        if (res->players[res->myId].pos.x == it->pos.x && res->players[res->myId].pos.y == it->pos.y) {
+            res->dead = true;
+            continue;
+        }
         for (int i = 0; i < 4; i++) {
             for (int j = 1; j < it->range; j++) {
                 if (it->pos.x + dx[i] * j < 0 || it->pos.x + dx[i] * j >= res->f.width
-                    || it->pos.y + dy[i] * j < 0 || it->pos.y + dy[i] * j >= res->f.height)
+                    || it->pos.y + dy[i] * j < 0 || it->pos.y + dy[i] * j >= res->f.height
+                    || res->f.getType(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j) == Field::Wall)
                     break;
                 else if (res->players[res->myId].pos.x == it->pos.x + dx[i] * j && res->players[res->myId].pos.y == it->pos.y + dy[i] * j ) {
                     res->dead = true;
@@ -326,6 +377,14 @@ State *act(const State &s, char actionId) {
         }
     }
 
+    State *del = res;
+
+    res = blow(*res);
+
+    delete del;
+
+    res->value = evalState(*res);
+
     return res;
 }
 
@@ -398,12 +457,10 @@ int main() {
             }
         }
 
-        State *blownUp = blow(current);
-
         State *nextState;
 
         for (char i = 0; i < 10; i++) {
-            if ((nextState = act(*blownUp, i)) != nullptr)
+            if ((nextState = act(current, i)) != nullptr)
                 beam[0].insert(lower_bound(beam[0].begin(),
                                            beam[0].end(),
                                            make_pair(nextState, i),
@@ -411,18 +468,16 @@ int main() {
                                make_pair(nextState, i));
         }
 
-        delete blownUp;
-
         elS1 = 0;
         elS2 = 0;
         elS3 = 0;
         elS4 = 0;
 
-        for (int i = 0; i < 9 - 1; i++) {
-            if (beam[i].size() > 18) {
-                for (auto it = beam[i].begin() + 18; it != beam[i].end(); it++)
+        for (int i = 0; i < 60 - 1; i++) {
+            if (beam[i].size() > 60) {
+                for (auto it = beam[i].begin() + 60; it != beam[i].end(); it++)
                     delete it->first;
-                beam[i].erase(beam[i].begin() + 18, beam[i].end());
+                beam[i].erase(beam[i].begin() + 60, beam[i].end());
             }
 
             while (!beam[i].empty()) {
@@ -432,12 +487,12 @@ int main() {
 
                 el1 = clock();
 
-                blownUp = blow(*(st.first));
+                //blownUp = blow(*(st.first));
 
                 el2 = clock();
 
                 for (char j = 0; j < 10; j++) {
-                    if ((nextState = act(*blownUp, j)) != nullptr)
+                    if ((nextState = act(*(st.first), j)) != nullptr)
                         beam[i + 1].insert(
                                 lower_bound(beam[i + 1].begin(), beam[i + 1].end(), make_pair(nextState, st.second),
                                             StateComparator()), make_pair(nextState, st.second));
@@ -445,7 +500,6 @@ int main() {
 
                 el3 = clock();
 
-                delete blownUp;
                 delete st.first;
 
                 end = clock();
@@ -464,23 +518,29 @@ int main() {
              << endl;
 
         int sol[10] = {};
+        int cnt[10] = {};
 
         for (int i = 0; i < 10; i++)
-            sol[i] = 0;
+            sol[i] = cnt[10] = 0;
 
-        while (!beam[8].empty()) {
-            auto item = beam[8].front();
-            beam[8].pop_front();
-            cerr << item.first->dead << endl;
-            sol[item.second] += evalState(*(item.first));
+        int hoge = 1;
+        while (!beam[59].empty()) {
+            auto item = beam[59].front();
+            beam[59].pop_front();
+            double evalResult = evalState(*(item.first));
+            sol[item.second] += evalState(*(item.first))/(hoge*hoge);
+            hoge++;
+            cnt[item.second]++;
+
+            cerr << item.second << " " << evalResult << endl;
         }
 
         int ans = 0;
 
         for (int i = 0; i < 10; i++) {
-            if (sol[ans] < sol[i])
+            if ((sol[ans] / max(1,cnt[ans])) < sol[i] / max(1,cnt[i]))
                 ans = i;
-            //cerr << sol[i] << endl;
+            cerr << cnt[i] << " " << sol[i] << endl;
         }
 
         cout << (actions[ans].place ? "BOMB " : "MOVE ")
