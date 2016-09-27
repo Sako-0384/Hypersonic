@@ -5,6 +5,7 @@
 #include <queue>
 #include <list>
 #include <map>
+#include <array>
 
 using namespace std;
 
@@ -39,6 +40,7 @@ public:
     float numBombs, remainingBombs, xpRange;
 
     Player() {}
+
     Player(int o, Vector2i p, float nBombs, float rBombs, float xpR)
             : Entity(o, p), numBombs(nBombs), remainingBombs(rBombs), xpRange(xpR) {}
 };
@@ -48,6 +50,7 @@ public:
     int count, range;
 
     Bomb() {}
+
     Bomb(int o, Vector2i p, int c, int r)
             : Entity(o, p), count(c), range(r) {}
 };
@@ -57,6 +60,7 @@ public:
     int type;
 
     Item() {}
+
     Item(Vector2i p, int t)
             : Entity(0, p), type(t) {}
 };
@@ -67,18 +71,20 @@ public:
     char field[11][13];
 
     const static char Empty = 0;
-    const static char Box = 1;
-    const static char Wall = 2;
+    const static char ItemBox1 = 1;
+    const static char ItemBox2 = 2;
+    const static char EmptyBox = 3;
+    const static char Wall = 4;
 
     Field() : height(11),
               width(13) {}
 
     void setType(const Vector2i &v, int s) {
-        field[v.y][v.x] = (char)s;
+        field[v.y][v.x] = (char) s;
     }
 
     void setType(const int x, const int y, const int s) {
-        field[y][x] = (char)s;
+        field[y][x] = (char) s;
     }
 
     int getType(const Vector2i &v) const {
@@ -92,43 +98,80 @@ public:
 
 class State {
 public:
-    State() {
+    State() : dead(false) {
     }
+
     int myId;
     Field f;
-    map<pair<int, int>, Bomb> bombs;
-    map<pair<int, int>, Item> items;
+    array<Bomb, 24> bombs;
+    array<Item, 64> items;
+
+    int bs, is;
+
     Player players[2];
     int boxesBroke;
+    bool dead;
+
+    array<Bomb, 16>::iterator findBomb(int x, int y) const {
+        int i=0;
+        auto it = bombs.begin();
+        for (; i<bs; i++) {
+            if ((it+i)->pos.x == x && (it+i)->pos.y == y) return (array<Bomb, 16>::iterator)(it+i);
+        }
+
+        return (array<Bomb, 16>::iterator)bombs.end();
+    }
+
+    array<Item, 64>::iterator findItem(int x, int y) const {
+        int i=0;
+        auto it = items.begin();
+        for (; i<is; i++) {
+            if ((it+i)->pos.x == x && (it+i)->pos.y == y) return (array<Item, 64>::iterator)(it+i);
+        }
+
+        return (array<Item, 64>::iterator)items.end();
+    }
 };
 
 double evalState(const State &s) {
     double res = 0;
-    for (auto it = s.bombs.begin();it!=s.bombs.end();it++) {
+
+    bool checked[11][13] = {};
+    auto it = s.bombs.begin();
+    for (int i=0; i<s.bs; i++, it++) {
+        if (it->owner != s.myId) continue;
         for (int i = 0; i < 4; i++) {
-            for (int j = 1; j < it->second.range; j++) {
-                if (it->first.first + dx[i] * j < 0 || it->first.first + dx[i] * j >= s.f.width
-                    || it->first.second + dy[i] * j < 0 || it->first.second + dy[i] * j >= s.f.height)
+            for (int j = 1; j < it->range; j++) {
+                if (it->pos.x + dx[i] * j < 0 || it->pos.x + dx[i] * j >= s.f.width
+                    || it->pos.y + dy[i] * j < 0 || it->pos.y + dy[i] * j >= s.f.height)
                     break;
-                else if (s.f.getType(it->first.first + dx[i] * j, it->first.second + dy[i] * j) == Field::Box) {
-                    res += 16.0;
+                else if (!checked[it->pos.x + dx[i] * j][it->pos.y + dy[i] * j] &&
+                        (s.f.getType(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j) == Field::EmptyBox
+                         ||s.f.getType(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j) == Field::ItemBox1
+                         ||s.f.getType(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j) == Field::ItemBox2)) {
+                    res += 8.0 * ((double)(8 - it->count + 1) / 4.0 + 6);
+                    checked[it->pos.x + dx[i] * j][it->pos.y + dy[i] * j] = true;
                     break;
-                } else if (s.bombs.find(make_pair(it->first.first + dx[i] * j, it->first.second + dy[i] * j)) !=
+                } else if (s.findBomb(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j) !=
                            s.bombs.end()) {
-                    if(s.bombs.find(make_pair(it->first.first + dx[i] * j, it->first.second + dy[i] * j))->second.owner==s.myId) {
-                        res += 1.0;
+                    if (s.findBomb(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j)->owner
+                        == s.myId) {
+                        res += 4.0;
                     } else {
-                        res -= 0.7;
+                        res -= 2.0;
                     }
                     break;
-                } else if (s.items.find(make_pair(it->first.first + dx[i] * j, it->first.second + dy[i] * j)) !=
+                } else if (s.findItem(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j) !=
                            s.items.end()) {
                     res -= 0.3;
                     break;
                 }
             }
         }
+
+        //cerr << it->pos.x << " " << it->pos.y << ": " << res << endl;
     }
+
 
     /*
     cerr << res << " "
@@ -139,16 +182,33 @@ double evalState(const State &s) {
          << endl;
     */
 
-    res += (double)s.boxesBroke * 6.0;
-    res += (double)s.players[s.myId].numBombs * 2.0;
-    res += (double)s.players[s.myId].xpRange * 2.0;
-    res += (double)(s.players[s.myId].numBombs - s.players[s.myId].remainingBombs) * 3.0;
+
+    res += (double) s.boxesBroke * 64.0;
+    res += (double) s.players[s.myId].numBombs * 1.0;
+    res += (double) s.players[s.myId].xpRange * 1.0;
+    res += (double) (s.players[s.myId].numBombs - s.players[s.myId].remainingBombs) * 0.2;
+
+    for (int i = 0; i < s.f.height; i++) {
+        for (int j = 0; j < s.f.width; j++) {
+            if (s.f.getType(j, i) == Field::EmptyBox
+                ||s.f.getType(j, i) == Field::ItemBox1
+                ||s.f.getType(j, i) == Field::ItemBox2) {
+                res -= (abs(j - s.players[s.myId].pos.x) + abs(i - s.players[s.myId].pos.y)) * 0.2;
+            }
+        }
+    }
+
+    //cerr << res << endl;
+
     return res;
 };
 
 class StateComparator {
 public:
     bool operator()(const pair<State *, int> &l, const pair<State *, int> &r) const {
+        if (r.first->dead&&l.first->dead) return false;
+        if (r.first->dead) return true;
+        if (l.first->dead) return false;
         return evalState(*(l.first)) > evalState(*(r.first));
     }
 };
@@ -169,42 +229,56 @@ const Action actions[10] = {
 
 State *blow(const State &s) {
     State *res = new State(s);
-    queue < pair<int, int> > blowQ;
-    for (auto it = res->bombs.begin(); it != res->bombs.end();it++) {
-        it->second.count--;
-        if (it->second.count <= 0) {
-            blowQ.push(it->first);
+    queue< pair<int, int> > blowQ;
+    for (auto it = res->bombs.begin(); it != res->bombs.end(); it++) {
+        it->count--;
+        if (it->count <= 0) {
+            blowQ.push(make_pair(it->pos.x, it->pos.y));
         }
     }
 
     while (!blowQ.empty()) {
-        auto it = res->bombs.find(blowQ.front());
+        auto it = res->findBomb(blowQ.front().first, blowQ.front().second);
         blowQ.pop();
         if (it == res->bombs.end()) continue;
         for (int i = 0; i < 4; i++) {
-            for (int j = 1; j < it->second.range; j++) {
-                if (it->first.first + dx[i] * j < 0 || it->first.first + dx[i] * j >= res->f.width
-                    || it->first.second + dy[i] * j < 0 || it->first.second + dy[i] * j >= res->f.height)
+            for (int j = 1; j < it->range; j++) {
+                if (it->pos.x + dx[i] * j < 0 || it->pos.x + dx[i] * j >= res->f.width
+                    || it->pos.y + dy[i] * j < 0 || it->pos.y + dy[i] * j >= res->f.height)
                     break;
-                else if (res->f.getType(it->first.first + dx[i] * j, it->first.second + dy[i] * j) == Field::Box) {
-                    res->f.setType(it->first.first + dx[i] * j, it->first.second + dy[i] * j, Field::Empty);
-                    res->items[make_pair(it->first.first + dx[i] * j, it->first.second + dy[i] * j)]
-                            = Item(Vector2i(it->first.first + dx[i] * j, it->first.second + dy[i] * j),
-                                   3);
+                else if (res->players[res->myId].pos.x == it->pos.x + dx[i] * j && res->players[res->myId].pos.y == it->pos.y + dy[i] * j ) {
+                    res->dead = true;
                     break;
-                } else if (res->bombs.find(make_pair(it->first.first + dx[i] * j, it->first.second + dy[i] * j)) !=
+                } else if (res->f.getType(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j) == Field::EmptyBox) {
+                    res->f.setType(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j, Field::Empty);
+                    if (it->owner == s.myId) res->boxesBroke++;
+                    break;
+                } else if (res->f.getType(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j) == Field::ItemBox1) {
+                    res->f.setType(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j, Field::Empty);
+                    res->items[res->is++] = (Item(Vector2i(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j), Field::ItemBox1));
+                    if (it->owner == s.myId) res->boxesBroke++;
+                    break;
+                } else if (res->f.getType(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j) == Field::ItemBox2) {
+                    res->f.setType(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j, Field::Empty);
+                    res->items[res->is++] = (Item(Vector2i(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j), Field::ItemBox2));
+                    if (it->owner == s.myId) res->boxesBroke++;
+                    break;
+                } else if (res->findBomb(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j) !=
                            res->bombs.end()) {
-                    blowQ.push(make_pair(it->first.first + dx[i] * j, it->first.second + dy[i] * j));
+                    blowQ.push(make_pair(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j));
                     break;
-                } else if (res->items.find(make_pair(it->first.first + dx[i] * j, it->first.second + dy[i] * j)) !=
+                } else if (res->findItem(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j) !=
                            res->items.end()) {
-                    res->items.erase(make_pair(it->first.first + dx[i] * j, it->first.second + dy[i] * j));
+                    copy(res->findItem(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j)+1, res->items.end(), res->findItem(it->pos.x + dx[i] * j, it->pos.y + dy[i] * j));
+                    res->is--;
                     break;
                 }
             }
         }
-        res->bombs.erase(it);
-        res->players[res->myId].remainingBombs+=1.0;
+        copy(it+1, res->bombs.end(), it);
+        res->bs--;
+        //res->bombs.erase(it);
+        res->players[res->myId].remainingBombs += 1.0;
     }
     return res;
 }
@@ -217,40 +291,38 @@ State *act(const State &s, char actionId) {
             || s.players[s.myId].pos.y + dy[actions[actionId].dir] < 0
             || s.players[s.myId].pos.y + dy[actions[actionId].dir] >= 11
             || s.f.getType(s.players[s.myId].pos.x + dx[actions[actionId].dir],
-                       s.players[s.myId].pos.y + dy[actions[actionId].dir]) != Field::Empty))
+                           s.players[s.myId].pos.y + dy[actions[actionId].dir]) != Field::Empty)) {
         return nullptr;
+    }
 
     State *res = new State(s);
 
     if (actions[actionId].place) {
-        res->bombs[make_pair(res->players[res->myId].pos.x, res->players[res->myId].pos.y)]
-                = Bomb(res->myId,
-                       Vector2i(res->players[res->myId].pos.x, res->players[res->myId].pos.y),
-                       8,
-                       (int)res->players[res->myId].xpRange);
-        res->players[res->myId].remainingBombs-=1.0;
+        res->bombs[res->bs++]=(Bomb(res->myId,
+                                  Vector2i(res->players[res->myId].pos.x, res->players[res->myId].pos.y),
+                                  8,
+                                  (int) res->players[res->myId].xpRange));
+        res->players[res->myId].remainingBombs -= 1.0;
     }
 
     if (actions[actionId].dir < 4) {
         res->players[res->myId].pos.x += dx[actions[actionId].dir];
         res->players[res->myId].pos.y += dy[actions[actionId].dir];
-        if (res->items.find(make_pair(res->players[res->myId].pos.x, res->players[res->myId].pos.y))!=res->items.end()) {
-            auto it = res->items.find(make_pair(res->players[res->myId].pos.x, res->players[res->myId].pos.y));
-            switch(it->second.type) {
+        if (res->findItem(res->players[res->myId].pos.x, res->players[res->myId].pos.y) !=
+            res->items.end()) {
+            auto it = res->findItem(res->players[res->myId].pos.x, res->players[res->myId].pos.y);
+            switch (it->type) {
                 case 1:
-                    res->players[res->myId].xpRange+=1.0;
+                    res->players[res->myId].xpRange += 1.0;
                     break;
                 case 2:
-                    res->players[res->myId].numBombs+=1.0;
-                    res->players[res->myId].remainingBombs+=1.0;
-                    break;
-                case 3:
-                    res->players[res->myId].xpRange+=0.3;
-                    res->players[res->myId].numBombs+=0.3;
-                    res->players[res->myId].remainingBombs+=0.3;
+                    res->players[res->myId].numBombs += 1.0;
+                    res->players[res->myId].remainingBombs += 1.0;
                     break;
             }
-            res->items.erase(it);
+            copy(it+1, res->items.end(), it);
+            res->is--;
+            //res->items.erase(it);
         }
     }
 
@@ -275,15 +347,28 @@ int main() {
     while (1) {
         deque<pair<State *, int> > beam[21];
 
-        current.bombs.clear();
-        current.items.clear();
+        current.bs=0;
+        current.is=0;
         current.boxesBroke = 0;
         for (int i = 0; i < height; i++) {
             string row;
             cin >> row;
             cin.ignore();
             for (int j = 0; j < width; j++) {
-                current.f.setType(Vector2i(j, i), (row[j] == '0') ? Field::Box : Field::Empty);
+                switch (row[j]) {
+                    case '.':
+                        current.f.setType(j, i, Field::Empty);
+                        break;
+                    case '0':
+                        current.f.setType(j, i, Field::EmptyBox);
+                        break;
+                    case '1':
+                        current.f.setType(j, i, Field::ItemBox1);
+                        break;
+                    case '2':
+                        current.f.setType(j, i, Field::ItemBox2);
+                        break;
+                }
             }
         }
         int entities;
@@ -304,11 +389,11 @@ int main() {
                     current.players[owner] = Player(owner, Vector2i(x, y), param1, param1, param2);
                     break;
                 case 1:
-                    current.bombs[make_pair(x, y)] = Bomb(owner, Vector2i(x, y), param1, param2);
-                    if (owner == myId) current.players[myId].numBombs+=1.0;
+                    current.bombs[current.bs++]=(Bomb(owner, Vector2i(x, y), param1, param2));
+                    if (owner == myId) current.players[myId].numBombs += 1.0;
                     break;
                 case 2:
-                    current.items[make_pair(x, y)] = Item(Vector2i(x, y), param1);
+                    current.items[current.is++]=(Item(Vector2i(x, y), param1));
                     break;
             }
         }
@@ -330,24 +415,26 @@ int main() {
 
         elS1 = 0;
         elS2 = 0;
+        elS3 = 0;
+        elS4 = 0;
 
-        for (int i=0;i<11-1;i++) {
-            if (beam[i].size()>10) {
-                for (auto it = beam[i].begin()+10;it != beam[i].end(); it++)
+        for (int i = 0; i < 9 - 1; i++) {
+            if (beam[i].size() > 18) {
+                for (auto it = beam[i].begin() + 18; it != beam[i].end(); it++)
                     delete it->first;
-                beam[i].erase(beam[i].begin()+10, beam[i].end());
+                beam[i].erase(beam[i].begin() + 18, beam[i].end());
             }
 
-            start = clock();
-
-            while(!beam[i].empty()) {
+            while (!beam[i].empty()) {
+                start = clock();
                 pair<State *, int> st = beam[i].front();
                 beam[i].pop_front();
 
+                el1 = clock();
+
                 blownUp = blow(*(st.first));
 
-                el1 = clock();
-                elS1 += (double)(el1-start)/CLOCKS_PER_SEC;
+                el2 = clock();
 
                 for (char j = 0; j < 10; j++) {
                     if ((nextState = act(*blownUp, j)) != nullptr)
@@ -356,38 +443,50 @@ int main() {
                                             StateComparator()), make_pair(nextState, st.second));
                 }
 
+                el3 = clock();
+
                 delete blownUp;
                 delete st.first;
 
-                el2 = clock();
+                end = clock();
+
+                elS1 += (double)(el1-start)/CLOCKS_PER_SEC;
                 elS2 += (double)(el2-el1)/CLOCKS_PER_SEC;
+                elS3 += (double)(el3-el2)/CLOCKS_PER_SEC;
+                elS4 += (double)(end-el3)/CLOCKS_PER_SEC;
             }
         }
 
-        cerr << elS1 << " " << elS2 << endl;
+        cerr << elS1 << " "
+             << elS2 << " "
+             << elS3 << " "
+             << elS4 << " "
+             << endl;
 
         int sol[10] = {};
 
-        for (int i = 0;i<10;i++)
+        for (int i = 0; i < 10; i++)
             sol[i] = 0;
 
-        while (!beam[10].empty()) {
-            auto item = beam[10].front();
-            beam[10].pop_front();
+        while (!beam[8].empty()) {
+            auto item = beam[8].front();
+            beam[8].pop_front();
+            cerr << item.first->dead << endl;
             sol[item.second] += evalState(*(item.first));
         }
 
         int ans = 0;
 
-        for (int i = 0;i<10;i++) {
-            if (sol[ans]<sol[i])
+        for (int i = 0; i < 10; i++) {
+            if (sol[ans] < sol[i])
                 ans = i;
+            //cerr << sol[i] << endl;
         }
 
-        cout << (actions[ans].place?"BOMB ":"MOVE ")
-             << current.players[myId].pos.x + ((ans%5!=4)?dx[actions[ans].dir]:0)
+        cout << (actions[ans].place ? "BOMB " : "MOVE ")
+             << current.players[myId].pos.x + ((ans % 5 != 4) ? dx[actions[ans].dir] : 0)
              << " "
-             << current.players[myId].pos.y + ((ans%5!=4)?dy[actions[ans].dir]:0)
+             << current.players[myId].pos.y + ((ans % 5 != 4) ? dy[actions[ans].dir] : 0)
              << endl;
     }
 }
