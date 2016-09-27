@@ -25,8 +25,10 @@ public:
 
 class Entity {
 public:
-    int owner;
+    char owner;
     Vector2i pos;
+
+    Entity() {}
 
     Entity(int o, Vector2i p)
             : owner(o), pos(p) {}
@@ -36,6 +38,7 @@ class Player : public Entity {
 public:
     float numBombs, remainingBombs, xpRange;
 
+    Player() {}
     Player(int o, Vector2i p, float nBombs, float rBombs, float xpR)
             : Entity(o, p), numBombs(nBombs), remainingBombs(rBombs), xpRange(xpR) {}
 };
@@ -44,6 +47,7 @@ class Bomb : public Entity {
 public:
     int count, range;
 
+    Bomb() {}
     Bomb(int o, Vector2i p, int c, int r)
             : Entity(o, p), count(c), range(r) {}
 };
@@ -52,41 +56,44 @@ class Item : public Entity {
 public:
     int type;
 
+    Item() {}
     Item(Vector2i p, int t)
             : Entity(0, p), type(t) {}
 };
 
 class Field {
 public:
-    int height, width;
-    int field[11];
+    char height, width;
+    char field[11][13];
 
-    const static int Empty = 0;
-    const static int Box = 1;
-    const static int Wall = 2;
+    const static char Empty = 0;
+    const static char Box = 1;
+    const static char Wall = 2;
 
     Field() : height(11),
               width(13) {}
 
     void setType(const Vector2i &v, int s) {
-        field[v.y] = field[v.y] | (3 << (2 * v.x)) ^ ((3 - s) << (2 * v.x));
+        field[v.y][v.x] = (char)s;
     }
 
-    int setType(const int x, const int y, const int s) {
-        field[y] = field[y] | (3 << (2 * x)) ^ ((3 - s) << (2 * x));
+    void setType(const int x, const int y, const int s) {
+        field[y][x] = (char)s;
     }
 
-    int getType(const Vector2i &v) {
-        return (field[v.y] >> (2 * v.x) % 4);
+    int getType(const Vector2i &v) const {
+        return (field[v.y][v.x]);
     }
 
-    int getType(int x, int y) {
-        return (field[y] >> (2 * x) % 4);
+    int getType(int x, int y) const {
+        return (field[y][x]);
     }
 };
 
 class State {
 public:
+    State() {
+    }
     int myId;
     Field f;
     map<pair<int, int>, Bomb> bombs;
@@ -96,7 +103,47 @@ public:
 };
 
 double evalState(const State &s) {
-    return s.boxesBroke;
+    double res = 0;
+    for (auto it = s.bombs.begin();it!=s.bombs.end();it++) {
+        for (int i = 0; i < 4; i++) {
+            for (int j = 1; j < it->second.range; j++) {
+                if (it->first.first + dx[i] * j < 0 || it->first.first + dx[i] * j >= s.f.width
+                    || it->first.second + dy[i] * j < 0 || it->first.second + dy[i] * j >= s.f.height)
+                    break;
+                else if (s.f.getType(it->first.first + dx[i] * j, it->first.second + dy[i] * j) == Field::Box) {
+                    res += 16.0;
+                    break;
+                } else if (s.bombs.find(make_pair(it->first.first + dx[i] * j, it->first.second + dy[i] * j)) !=
+                           s.bombs.end()) {
+                    if(s.bombs.find(make_pair(it->first.first + dx[i] * j, it->first.second + dy[i] * j))->second.owner==s.myId) {
+                        res += 1.0;
+                    } else {
+                        res -= 0.7;
+                    }
+                    break;
+                } else if (s.items.find(make_pair(it->first.first + dx[i] * j, it->first.second + dy[i] * j)) !=
+                           s.items.end()) {
+                    res -= 0.3;
+                    break;
+                }
+            }
+        }
+    }
+
+    /*
+    cerr << res << " "
+         << s.boxesBroke << " "
+         << s.players[s.myId].numBombs << " "
+         << s.players[s.myId].xpRange << " "
+         << (s.players[s.myId].numBombs - s.players[s.myId].remainingBombs)
+         << endl;
+    */
+
+    res += (double)s.boxesBroke * 6.0;
+    res += (double)s.players[s.myId].numBombs * 2.0;
+    res += (double)s.players[s.myId].xpRange * 2.0;
+    res += (double)(s.players[s.myId].numBombs - s.players[s.myId].remainingBombs) * 3.0;
+    return res;
 };
 
 class StateComparator {
@@ -133,35 +180,37 @@ State *blow(const State &s) {
     while (!blowQ.empty()) {
         auto it = res->bombs.find(blowQ.front());
         blowQ.pop();
+        if (it == res->bombs.end()) continue;
         for (int i = 0; i < 4; i++) {
             for (int j = 1; j < it->second.range; j++) {
                 if (it->first.first + dx[i] * j < 0 || it->first.first + dx[i] * j >= res->f.width
                     || it->first.second + dy[i] * j < 0 || it->first.second + dy[i] * j >= res->f.height)
                     break;
-                else if (res->f.getType(it->first.first + dx[i] * j, it->first.second + dx[i] * j) == Field::Box) {
-                    res->f.setType(it->first.first + dx[i] * j, it->first.second + dx[i] * j, Field::Empty);
-                    res->items[make_pair(it->first.first + dx[i] * j, it->first.second + dx[i] * j)]
-                            = Item(Vector2i(it->first.first + dx[i] * j, it->first.second + dx[i] * j),
+                else if (res->f.getType(it->first.first + dx[i] * j, it->first.second + dy[i] * j) == Field::Box) {
+                    res->f.setType(it->first.first + dx[i] * j, it->first.second + dy[i] * j, Field::Empty);
+                    res->items[make_pair(it->first.first + dx[i] * j, it->first.second + dy[i] * j)]
+                            = Item(Vector2i(it->first.first + dx[i] * j, it->first.second + dy[i] * j),
                                    3);
                     break;
-                } else if (res->bombs.find(make_pair(it->first.first + dx[i] * j, it->first.second + dx[i] * j)) !=
+                } else if (res->bombs.find(make_pair(it->first.first + dx[i] * j, it->first.second + dy[i] * j)) !=
                            res->bombs.end()) {
-                    blowQ.push(make_pair(it->first.first + dx[i] * j, it->first.second + dx[i] * j));
+                    blowQ.push(make_pair(it->first.first + dx[i] * j, it->first.second + dy[i] * j));
                     break;
-                } else if (res->items.find(make_pair(it->first.first + dx[i] * j, it->first.second + dx[i] * j)) !=
+                } else if (res->items.find(make_pair(it->first.first + dx[i] * j, it->first.second + dy[i] * j)) !=
                            res->items.end()) {
-                    res->items.erase(make_pair(it->first.first + dx[i] * j, it->first.second + dx[i] * j));
+                    res->items.erase(make_pair(it->first.first + dx[i] * j, it->first.second + dy[i] * j));
                     break;
                 }
             }
         }
         res->bombs.erase(it);
+        res->players[res->myId].remainingBombs+=1.0;
     }
     return res;
 }
 
 State *act(const State &s, char actionId) {
-    if (actionId >= 5 && s.players[s.myId].remainingBombs <= 0) return nullptr;
+    if (actionId >= 5 && s.players[s.myId].remainingBombs < 1.0) return nullptr;
     if (actions[actionId].dir < 4
         && (s.players[s.myId].pos.x + dx[actions[actionId].dir] < 0
             || s.players[s.myId].pos.x + dx[actions[actionId].dir] >= 13
@@ -179,6 +228,7 @@ State *act(const State &s, char actionId) {
                        Vector2i(res->players[res->myId].pos.x, res->players[res->myId].pos.y),
                        8,
                        (int)res->players[res->myId].xpRange);
+        res->players[res->myId].remainingBombs-=1.0;
     }
 
     if (actions[actionId].dir < 4) {
@@ -195,9 +245,9 @@ State *act(const State &s, char actionId) {
                     res->players[res->myId].remainingBombs+=1.0;
                     break;
                 case 3:
-                    res->players[res->myId].xpRange+=0.5;
-                    res->players[res->myId].numBombs+=0.5;
-                    res->players[res->myId].remainingBombs+=0.5;
+                    res->players[res->myId].xpRange+=0.3;
+                    res->players[res->myId].numBombs+=0.3;
+                    res->players[res->myId].remainingBombs+=0.3;
                     break;
             }
             res->items.erase(it);
@@ -208,13 +258,13 @@ State *act(const State &s, char actionId) {
 }
 
 int main() {
+    clock_t start, el1, el2, el3, end;
+    double elS1, elS2, elS3, elS4;
     int width;
     int height;
     int myId;
     cin >> width >> height >> myId;
     cin.ignore();
-
-    deque<pair<State *, int> > beam[50];
 
     State current;
 
@@ -223,8 +273,11 @@ int main() {
 
     // game loop
     while (1) {
+        deque<pair<State *, int> > beam[21];
+
         current.bombs.clear();
         current.items.clear();
+        current.boxesBroke = 0;
         for (int i = 0; i < height; i++) {
             string row;
             cin >> row;
@@ -248,10 +301,11 @@ int main() {
 
             switch (entityType) {
                 case 0:
-                    current.players[owner] = Player(owner, Vector2i(x, y), 0, param1, param2);
+                    current.players[owner] = Player(owner, Vector2i(x, y), param1, param1, param2);
                     break;
                 case 1:
                     current.bombs[make_pair(x, y)] = Bomb(owner, Vector2i(x, y), param1, param2);
+                    if (owner == myId) current.players[myId].numBombs+=1.0;
                     break;
                 case 2:
                     current.items[make_pair(x, y)] = Item(Vector2i(x, y), param1);
@@ -265,20 +319,35 @@ int main() {
 
         for (char i = 0; i < 10; i++) {
             if ((nextState = act(*blownUp, i)) != nullptr)
-                beam[0].insert(lower_bound(beam[0].begin(), beam[0].end(), make_pair(nextState, i), StateComparator()), make_pair(nextState, i));
+                beam[0].insert(lower_bound(beam[0].begin(),
+                                           beam[0].end(),
+                                           make_pair(nextState, i),
+                                           StateComparator()),
+                               make_pair(nextState, i));
         }
 
         delete blownUp;
 
-        for (int i=0;i<50-1;i++) {
-            if (beam[i].size()>100) {
-                beam[i].erase(beam[i].begin()+100, beam[i].end());
+        elS1 = 0;
+        elS2 = 0;
+
+        for (int i=0;i<11-1;i++) {
+            if (beam[i].size()>10) {
+                for (auto it = beam[i].begin()+10;it != beam[i].end(); it++)
+                    delete it->first;
+                beam[i].erase(beam[i].begin()+10, beam[i].end());
             }
+
+            start = clock();
+
             while(!beam[i].empty()) {
                 pair<State *, int> st = beam[i].front();
                 beam[i].pop_front();
 
                 blownUp = blow(*(st.first));
+
+                el1 = clock();
+                elS1 += (double)(el1-start)/CLOCKS_PER_SEC;
 
                 for (char j = 0; j < 10; j++) {
                     if ((nextState = act(*blownUp, j)) != nullptr)
@@ -289,13 +358,23 @@ int main() {
 
                 delete blownUp;
                 delete st.first;
+
+                el2 = clock();
+                elS2 += (double)(el2-el1)/CLOCKS_PER_SEC;
             }
         }
 
+        cerr << elS1 << " " << elS2 << endl;
+
         int sol[10] = {};
 
-        for (auto it = beam[49].begin();it!=beam[49].end();it++) {
-            sol[it->second] += evalState(*(it->first));
+        for (int i = 0;i<10;i++)
+            sol[i] = 0;
+
+        while (!beam[10].empty()) {
+            auto item = beam[10].front();
+            beam[10].pop_front();
+            sol[item.second] += evalState(*(item.first));
         }
 
         int ans = 0;
@@ -306,9 +385,9 @@ int main() {
         }
 
         cout << (actions[ans].place?"BOMB ":"MOVE ")
-             << current.players[myId].pos.x + dx[actions[ans].dir]
+             << current.players[myId].pos.x + ((ans%5!=4)?dx[actions[ans].dir]:0)
              << " "
-             << current.players[myId].pos.y + dy[actions[ans].dir]
+             << current.players[myId].pos.y + ((ans%5!=4)?dy[actions[ans].dir]:0)
              << endl;
     }
 }
