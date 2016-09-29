@@ -351,7 +351,8 @@ public:
                             if (!(x+dx[i]*r<0||x+dx[i]*r>=13
                                 ||y+dy[i]*r<0||y+dy[i]*r>=11)
                                 &&(f.getType(x+dx[i]*r, y+dy[i]*r)!=Field::Wall
-                                   &&f.getType(x+dx[i]*r, y+dy[i]*r)!=Field::Empty))
+                                   &&f.getType(x+dx[i]*r, y+dy[i]*r)!=Field::Empty)
+                                /*&&xpc.field[x+dx[i]*r][y+dy[i]*r]==0*/)
                                 bombEfficiency[y][x]++;
                             break;
                         }
@@ -375,7 +376,7 @@ public:
         
         for (auto it = ba.begin();it!=ba.end();it++) {
             if (it->owner == myId)
-                bombScore += bombEfficiency[it->pos.y][it->pos.x] * bombEfficiency[it->pos.y][it->pos.x] * (8 - xpc.firstBlow(it->pos.x, it->pos.y) / 2) * 30;
+                bombScore += bombEfficiency[it->pos.y][it->pos.x] * bombEfficiency[it->pos.y][it->pos.x] * bombEfficiency[it->pos.y][it->pos.x] * (8 - xpc.firstBlow(it->pos.x, it->pos.y) / 2) * 30;
         }
     }
 };
@@ -396,8 +397,9 @@ public:
                 continue;
             }
 
-            if (p.first>s.xpc.lastBlow(p.second.first, p.second.second)) {
-                res++;
+            if (p.first-1>s.xpc.lastBlow(p.second.first, p.second.second)) {
+                cerr << "    " << p.second.first << " " << p.second.second << endl;
+                res = 1;
                 break;
             }
 
@@ -419,7 +421,11 @@ public:
         res += s.bombScore * 100;
         res += s.boxesBroke * 300;
         res += (double)s.evade * 10.0;
-        res += s.players[s.myId].xpRange + s.players[s.myId].numBombs;
+        res += s.players[s.myId].xpRange * 200.0 + s.players[s.myId].numBombs * 350.0;
+        for (int i=0;i<4;i++) {
+            if (i!=s.myId) res += (11.0 - abs(s.players[i].pos.x-6) - abs(s.players[i].pos.y-5)) * 10.0;
+            else res += (abs(s.players[i].pos.x-6) + abs(s.players[i].pos.y-5)) * 4.0;
+        }
         return res;
     }
 };
@@ -620,7 +626,7 @@ int main() {
 
         for (char i = 0; i < 10; i++) {
             if ((nextState = act(*b, i)) == nullptr) continue;
-            if(i==1) cerr << nextState->evade << endl;
+            if (nextState->dead || nextState->evade==0) continue;
             beam[0].insert(lower_bound(beam[0].begin(),
                                        beam[0].end(),
                                        make_pair(nextState, i),
@@ -679,27 +685,24 @@ int main() {
              << elS4 << " "
              << endl;
 
-        int sol[10] = {};
+        double sol[10] = {};
         int cnt[10] = {};
 
         for (int i = 0; i < 10; i++)
             sol[i] = cnt[i] = 0;
 
-        int hoge = 1;
+        double hoge = 1;
         while (!beam[BEAM_DEPTH].empty()) {
             auto item = beam[BEAM_DEPTH].front();
             beam[BEAM_DEPTH].pop_front();
             double evalResult = StateEvaluator::evaluate(*(item.first));
-            sol[item.second] += evalResult;
+            sol[item.second] += evalResult * hoge;
             cnt[item.second]++;
 
-            /*
             cerr << item.second << " "
-                 << evalResult << " "
-                 << item.first->value << " "
-                 << item.first->evade << " "
-                 << item.first->dead << endl;
-            */
+                 << evalResult << endl;
+                 
+            //hoge *= 0.93;
         }
 
         int ans = 0;
@@ -709,10 +712,6 @@ int main() {
                 ans = i;
             cerr << cnt[i] << " " << sol[i] << endl;
         }
-        current.xpc.update(&current.ba, &current.ia, current.f);
-        current.updateReqTime();
-        current.updateEfficiency();
-        cerr << current.bombEfficiency[0][1] << endl;
 
         cout << (actions[ans].place ? "BOMB " : "MOVE ")
              << current.players[myId].pos.x + ((ans % 5 != 4) ? dx[actions[ans].dir] : 0)
