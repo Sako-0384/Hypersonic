@@ -11,13 +11,18 @@
 #include <cmath>
 #include <cstdlib>
 
-const int BEAM_DEPTH = 5;
+const int BEAM_DEPTH = 10;
 const int BEAM_WIDTH = 10;
 
 using namespace std;
 
 const int dx[4] = {1, 0, -1, 0};
 const int dy[4] = {0, 1, 0, -1};
+
+clock_t start, el1, el2, el3, cend;
+double elS1, elS2, elS3, elS4;
+
+int qcnt;
 
 class Vector2i {
 public:
@@ -231,6 +236,20 @@ public:
         return -1;
     }
 
+    int nextBlow(int x, int y, int c) const {
+        for (int i=c+1;i<9;i++)
+            if ((field[y][x] & (1 << i)) != 0) return i;
+
+        return -1;
+    }
+
+    int prevBlow(int x, int y, int c) const {
+        for (int i=c-1;i>=0;i--)
+            if ((field[y][x] & (1 << i)) != 0) return i;
+
+        return -1;
+    }
+
     void update(BombArray *ba, ItemArray *ia, const Field &f) {
         memset(field, 0, sizeof(field));
 
@@ -310,6 +329,7 @@ public:
     bool dead;
     double value;
     int bombScore;
+    int reachableCells;
     int evade;
 
     bool canOccupy(int x, int y, int round) const {
@@ -317,8 +337,15 @@ public:
         return !(ba.find(x, y) != ba.end() && ba.find(x, y)->count >= round);
     }
 
-    void updateReqTime() {
+    //void updateReqTime() {
+    void updateReqTimeAndEfficiency() {
         memset(requiredTime, 0x0f, sizeof(requiredTime));
+        memset(bombEfficiency, 0x00, sizeof(bombEfficiency));
+        memset(bombEfficiency2, 0x00, sizeof(bombEfficiency2));
+        
+        reachableCells = 0;
+        beMx = players[myId].pos.x; beMy = players[myId].pos.y;
+        bombScore = 0;
 
         queue< pair< unsigned int, pair<int, int> > > q;
         q.push(make_pair(0, make_pair(players[myId].pos.x,players[myId].pos.y)));
@@ -327,8 +354,39 @@ public:
             auto p = q.front();
             q.pop();
 
-            if (p.first>requiredTime[p.second.second][p.second.first]) continue;
-            else requiredTime[p.second.second][p.second.first] = p.first;
+            if (p.first>=requiredTime[p.second.second][p.second.first]) continue;
+
+            if (p.first > 30) {
+                requiredTime[p.second.second][p.second.first] = 30;
+                continue;
+            }
+
+            requiredTime[p.second.second][p.second.first] = p.first;
+
+            for (int i=0;i<4;i++) {
+                for (int r=1;r<players[myId].xpRange;r++) {
+                    if (!canOccupy(p.second.first+dx[i]*r, p.second.second+dy[i]*r, 0)) {
+                        if (!(p.second.first+dx[i]*r<0||p.second.first+dx[i]*r>=13
+                              ||p.second.second+dy[i]*r<0||p.second.second+dy[i]*r>=11)
+                            &&(f.getType(p.second.first+dx[i]*r, p.second.second+dy[i]*r)!=Field::Wall
+                               &&f.getType(p.second.first+dx[i]*r, p.second.second+dy[i]*r)!=Field::Empty)
+                            /*&&xpc.field[x+dx[i]*r][y+dy[i]*r]==0*/)
+                            bombEfficiency[p.second.second][p.second.first]++;
+                        break;
+                    }
+                }
+            }
+
+            bombEfficiency2[p.second.second][p.second.first]
+                    = bombEfficiency[p.second.second][p.second.first]
+                      * max(0, 30 - max(0,requiredTime[p.second.second][p.second.first]));
+            //cerr << bombEfficiency2[p.second.second][p.second.first] << endl;
+            if (bombEfficiency2[p.second.second][p.second.first]>bombEfficiency2[beMy][beMx]) {
+                beMx = p.second.first;
+                beMy = p.second.second;
+            }
+
+            reachableCells++;
 
             for (int i=0;i<4;i++) {
                 int nx = p.second.first + dx[i], ny = p.second.second + dy[i];
@@ -337,14 +395,20 @@ public:
                 }
             }
         }
+
+        for (auto it = ba.begin();it!=ba.end();it++) {
+            if (it->owner == myId)
+                bombScore += bombEfficiency[it->pos.y][it->pos.x] * bombEfficiency[it->pos.y][it->pos.x] * bombEfficiency[it->pos.y][it->pos.x] * (8 - xpc.firstBlow(it->pos.x, it->pos.y) / 2) * 30;
+        }
     }
 
     void updateEfficiency() {
-        memset(bombEfficiency, 0x00, sizeof(bombEfficiency));
-        memset(bombEfficiency2, 0x00, sizeof(bombEfficiency2));
+        beMx = 0; beMy = 0;
+        bombScore = 0;
 
         for (int y = 0;y < f.height;y++) {
             for (int x = 0;x < f.width;x++) {
+                bombEfficiency[y][x] = 0;
                 for (int i=0;i<4;i++) {
                     for (int r=1;r<players[myId].xpRange;r++) {
                         if (!canOccupy(x+dx[i]*r, y+dy[i]*r, 0)) {
@@ -358,15 +422,8 @@ public:
                         }
                     }
                 }
-            }
-        }
 
-        beMx = 0; beMy = 0;
-        bombScore = 0;
-
-        for (int y = 0;y < f.height;y++) {
-            for (int x = 0;x < f.width;x++) {
-                bombEfficiency2[y][x] = bombEfficiency[y][x] * max(0, (30 - requiredTime[y][x]));
+                bombEfficiency2[y][x] = bombEfficiency[y][x] * max(0, (30 - ((requiredTime[y][x]>1000)?30:requiredTime[y][x])));
                 if (bombEfficiency2[y][x]>bombEfficiency2[beMy][beMx]) {
                     beMx = x;
                     beMy = y;
@@ -383,7 +440,6 @@ public:
 
 class StateEvaluator {
 public:
-    // おもい
     static int calcEvade(const State &s, int player) {
         int res = 0;
 
@@ -399,7 +455,7 @@ public:
             }
 
             if (p.first-1>s.xpc.lastBlow(p.second.first, p.second.second)) {
-                cerr << "    " << p.second.first << " " << p.second.second << endl;
+                //cerr << "    " << p.second.first << " " << p.second.second << endl;
                 res = 1;
                 break;
             }
@@ -415,17 +471,61 @@ public:
         return res;
     }
 
+    /*
+    static int calcEvade(const State &s, int player) {
+        int res = 0;
+
+        int memo[11][13] = {};
+        memset(memo, 0xff, sizeof(memo));
+
+        deque< pair< int, pair<int, int> > > q;
+        q.push_back(make_pair(0, make_pair(s.players[player].pos.x,s.players[player].pos.y)));
+
+        //memo[s.players[player].pos.y][s.players[player].pos.x] = 0;
+
+        while(!q.empty()) {
+            qcnt++;
+            auto p = q.front();
+            q.pop_front();
+
+            if (!s.canOccupy(p.second.first, p.second.second, p.first)||s.xpc.get(p.second.first, p.second.second, p.first)) {
+                continue;
+            }
+
+            if (memo[p.second.second][p.second.first]==max(0, s.xpc.prevBlow(p.second.first, p.second.second, p.first)))
+                continue;
+            else memo[p.second.second][p.second.first] = max(0, s.xpc.prevBlow(p.second.first, p.second.second, p.first));
+
+            if (s.xpc.nextBlow(p.second.first, p.second.second, p.first)==-1) {
+                res = 1;
+                //cerr << "evade: " << p.second.first << " " << p.second.second << " " << p.first << endl;
+                break;
+            }
+
+            for (int i=0;i<4;i++) {
+                int nx = p.second.first + dx[i], ny = p.second.second + dy[i];
+                for (int n = p.first;n!=-1&&n<s.xpc.nextBlow(p.second.first, p.second.second, p.first);n = s.xpc.nextBlow(nx, ny, n)) {
+                    q.insert(lower_bound(q.begin(), q.end(), make_pair(n + 1, make_pair(nx, ny)), greater< pair< int, pair<int, int> > >()), make_pair(n + 1, make_pair(nx, ny)));
+                }
+            }
+        }
+
+        return res;
+    }
+     */
+
     static double evaluate(const State &s) {
         if (s.dead||s.evade==0) return 0;
         double res = 0;
         res += s.bombEfficiency2[s.beMy][s.beMx] * 10;
-        res += s.bombScore * 100;
+        res += s.bombScore * 1000;
         res += s.boxesBroke * 300;
         res += (double)s.evade * 10.0;
-        res += s.players[s.myId].xpRange * 200.0 + s.players[s.myId].numBombs * 350.0;
+        //res += (double)s.reachableCells * 10.0;
+        res += s.players[s.myId].xpRange * 900.0 + s.players[s.myId].numBombs * 1200.0;
         for (int i=0;i<4;i++) {
-            if (i!=s.myId) res += (11.0 - abs(s.players[i].pos.x-6) - abs(s.players[i].pos.y-5)) * 10.0;
-            else res += (abs(s.players[i].pos.x-6) + abs(s.players[i].pos.y-5)) * 4.0;
+            if (i!=s.myId) res += (11.0 - abs(s.players[i].pos.x-6) - abs(s.players[i].pos.y-5)) * 100.0;
+            else res += (abs(s.players[i].pos.x-6) + abs(s.players[i].pos.y-5)) * 40.0;
         }
         return res;
     }
@@ -503,6 +603,8 @@ State *act(const State &s, char actionId) {
         return nullptr;
     }
 
+    start = clock();
+
     State *res = new State(s);
 
     if (actions[actionId].place) {
@@ -532,26 +634,40 @@ State *act(const State &s, char actionId) {
         }
     }
 
+    el1 = clock();
+
     State *del = res;
 
     res = blow(*res);
 
     delete del;
 
-    res->updateReqTime();
+    el2 = clock();
 
-    res->updateEfficiency();
+    //res->updateReqTime();
+    res->updateReqTimeAndEfficiency();
+
+    el3 = clock();
+
+    //res->updateEfficiency();
 
     res->evade = StateEvaluator::calcEvade(*res, res->myId);
 
     res->value = StateEvaluator::evaluate(*res);
 
+    cend = clock();
+
+    elS1 += (double)(el1-start)/CLOCKS_PER_SEC;
+    elS2 += (double)(el2-el1)/CLOCKS_PER_SEC;
+    elS3 += (double)(el3-el2)/CLOCKS_PER_SEC;
+    elS4 += (double)(cend-el3)/CLOCKS_PER_SEC;
+
     return res;
 }
 
 int main() {
-    clock_t start, el1, el2, el3, end;
-    double elS1, elS2, elS3, elS4;
+    //clock_t start, el1, el2, el3, end;
+    //double elS1, elS2, elS3, elS4;
     int width;
     int height;
     int myId;
@@ -565,6 +681,8 @@ int main() {
 
     // game loop
     while (1) {
+        qcnt = 0;
+
         deque<pair<State *, int> > beam[BEAM_DEPTH+1];
 
         current.ba.s=0;
@@ -648,15 +766,10 @@ int main() {
             }
 
             while (!beam[i].empty()) {
-                start = clock();
                 pair<State *, int> st = beam[i].front();
                 beam[i].pop_front();
 
-                el1 = clock();
-
                 //blownUp = blow(*(st.first));
-
-                el2 = clock();
 
                 for (char j = 0; j < 10; j++) {
                     if ((nextState = act(*(st.first), j)) != nullptr) {
@@ -667,16 +780,7 @@ int main() {
                     }
                 }
 
-                el3 = clock();
-
                 delete st.first;
-
-                end = clock();
-
-                elS1 += (double)(el1-start)/CLOCKS_PER_SEC;
-                elS2 += (double)(el2-el1)/CLOCKS_PER_SEC;
-                elS3 += (double)(el3-el2)/CLOCKS_PER_SEC;
-                elS4 += (double)(end-el3)/CLOCKS_PER_SEC;
             }
         }
 
@@ -713,6 +817,10 @@ int main() {
                 ans = i;
             cerr << cnt[i] << " " << sol[i] << endl;
         }
+
+        cerr << "qcnt: " << qcnt << endl;
+        current.xpc.update(&current.ba, &current.ia, current.f);
+        cerr << current.xpc.field[6][9] << endl;
 
         cout << (actions[ans].place ? "BOMB " : "MOVE ")
              << current.players[myId].pos.x + ((ans % 5 != 4) ? dx[actions[ans].dir] : 0)
