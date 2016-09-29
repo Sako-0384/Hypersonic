@@ -383,6 +383,7 @@ public:
 
 class StateEvaluator {
 public:
+    // おもい
     static int calcEvade(const State &s, int player) {
         int res = 0;
 
