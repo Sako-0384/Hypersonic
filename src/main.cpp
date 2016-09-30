@@ -11,8 +11,8 @@
 #include <cmath>
 #include <cstdlib>
 
-const int BEAM_DEPTH = 10;
-const int BEAM_WIDTH = 10;
+const int BEAM_DEPTH = 16;
+const int BEAM_WIDTH = 75;
 
 using namespace std;
 
@@ -50,11 +50,12 @@ public:
 class Player : public Entity {
 public:
     float numBombs, remainingBombs, xpRange;
+    bool dead;
 
-    Player() {}
+    Player() : dead(true) {}
 
     Player(int o, Vector2i p, float nBombs, float rBombs, float xpR)
-            : Entity(o, p), numBombs(nBombs), remainingBombs(rBombs), xpRange(xpR) {}
+            : Entity(o, p), numBombs(nBombs), remainingBombs(rBombs), xpRange(xpR), dead(false) {}
 };
 
 class Bomb : public Entity {
@@ -80,45 +81,46 @@ public:
 class BombArray {
 public:
     BombArray() : s(0) {}
+
     array<Bomb, 24> bombs;
     int s;
 
     array<Bomb, 24>::iterator find(int x, int y) const {
-        int i=0;
+        int i = 0;
         auto it = bombs.begin();
-        for (; i<s; i++) {
-            if ((it+i)->pos.x == x && (it+i)->pos.y == y) return (array<Bomb, 24>::iterator)(it+i);
+        for (; i < s; i++) {
+            if ((it + i)->pos.x == x && (it + i)->pos.y == y) return (array<Bomb, 24>::iterator) (it + i);
         }
 
-        return (array<Bomb, 24>::iterator)end();
+        return (array<Bomb, 24>::iterator) end();
     }
 
     class ByCount {
     public:
-        bool operator() (const Bomb &l, const Bomb &r) {
+        bool operator()(const Bomb &l, const Bomb &r) {
             return l.count < r.count;
         }
     };
 
     array<Bomb, 24>::iterator begin() const {
-        return (array<Bomb, 24>::iterator)(bombs.begin());
+        return (array<Bomb, 24>::iterator) (bombs.begin());
     }
 
     array<Bomb, 24>::iterator end() const {
-        return (array<Bomb, 24>::iterator)(bombs.begin()+s);
+        return (array<Bomb, 24>::iterator) (bombs.begin() + s);
     }
 
     void sort() {
-        std::sort(bombs.begin(), bombs.begin()+s, BombArray::ByCount());
+        std::sort(bombs.begin(), bombs.begin() + s, BombArray::ByCount());
     }
 
-    void push(const Bomb& a) {
+    void push(const Bomb &a) {
         bombs[s] = a;
         s++;
     }
 
     void erase(array<Bomb, 24>::iterator it) {
-        copy(it+1, bombs.end(), it);
+        copy(it + 1, bombs.end(), it);
         s--;
     }
 };
@@ -126,33 +128,34 @@ public:
 class ItemArray {
 public:
     ItemArray() : s(0) {}
+
     array<Item, 64> items;
     int s;
 
     array<Item, 64>::iterator begin() const {
-        return (array<Item, 64>::iterator)(items.begin());
+        return (array<Item, 64>::iterator) (items.begin());
     }
 
     array<Item, 64>::iterator end() const {
-        return (array<Item, 64>::iterator)(items.begin()+s);
+        return (array<Item, 64>::iterator) (items.begin() + s);
     }
 
     array<Item, 64>::iterator find(int x, int y) const {
-        int i=0;
+        int i = 0;
         auto it = items.begin();
-        for (; i<s; i++) {
-            if ((it+i)->pos.x == x && (it+i)->pos.y == y) return (array<Item, 64>::iterator)(it+i);
+        for (; i < s; i++) {
+            if ((it + i)->pos.x == x && (it + i)->pos.y == y) return (array<Item, 64>::iterator) (it + i);
         }
 
-        return (array<Item, 64>::iterator)end();
+        return (array<Item, 64>::iterator) end();
     }
 
-    void push(const Item& a) {
+    void push(const Item &a) {
         items[s++] = a;
     }
 
     void erase(array<Item, 64>::iterator it) {
-        copy(it+1, end(), it);
+        copy(it + 1, end(), it);
         s--;
     }
 };
@@ -196,8 +199,8 @@ public:
 
     XpCells() : height(11), width(13) {}
 
-    void set (int x, int y, int c, bool b) {
-        if (c<0||c>8) return;
+    void set(int x, int y, int c, bool b) {
+        if (c < 0 || c > 8) return;
 
         if (b) {
             field[y][x] |= (1 << c);
@@ -208,43 +211,43 @@ public:
         return;
     }
 
-    bool get (int x, int y, int c) const {
-        if (c<0||c>8) return false;
+    bool get(int x, int y, int c) const {
+        if (c < 0 || c > 8) return false;
 
-        return (field[y][x] & (1 << c))!=0;
+        return (field[y][x] & (1 << c)) != 0;
     }
 
     bool blownBefore(int x, int y, int c) const {
-        return (field[y][x] & ((1 << c) - 1))!=0;
+        return (field[y][x] & ((1 << c) - 1)) != 0;
     }
 
     bool blownAfter(int x, int y, int c) const {
-        return (field[y][x] & ~((1 << (c+1)) - 1))!=0;
+        return (field[y][x] & ~((1 << (c + 1)) - 1)) != 0;
     }
 
     int lastBlow(int x, int y) const {
-        for (int i=8;i>=0;i--)
+        for (int i = 8; i >= 0; i--)
             if ((field[y][x] & (1 << i)) != 0) return i;
 
         return -1;
     }
 
     int firstBlow(int x, int y) const {
-        for (int i=0;i<9;i++)
+        for (int i = 0; i < 9; i++)
             if ((field[y][x] & (1 << i)) != 0) return i;
 
         return -1;
     }
 
     int nextBlow(int x, int y, int c) const {
-        for (int i=c+1;i<9;i++)
+        for (int i = c + 1; i < 9; i++)
             if ((field[y][x] & (1 << i)) != 0) return i;
 
         return -1;
     }
 
     int prevBlow(int x, int y, int c) const {
-        for (int i=c-1;i>=0;i--)
+        for (int i = c - 1; i >= 0; i--)
             if ((field[y][x] & (1 << i)) != 0) return i;
 
         return -1;
@@ -252,51 +255,49 @@ public:
 
     void update(BombArray *ba, ItemArray *ia, const Field &f) {
         memset(field, 0, sizeof(field));
+        memset(blown, 0, sizeof(blown));
 
         ba->sort();
 
         auto itr = ba->begin();
 
-        queue <array<Bomb, 24>::iterator> q;
+        queue<array<Bomb, 24>::iterator> q;
 
-        for (int counts = 0;counts < 9;counts++) {
-            for (int j=0;j<4;j++)
-                blown[j][counts] = 0;
-
-            for(;itr!=ba->end()&&itr->count<=counts;itr++) {
-                if (itr->count==counts) q.push(itr);
+        for (int counts = 0; counts < 9; counts++) {
+            for (; itr != ba->end() && itr->count <= counts; itr++) {
+                if (itr->count == counts) q.push(itr);
             }
 
-            while(!q.empty()) {
+            while (!q.empty()) {
                 auto it = q.front();
                 q.pop();
 
                 int c = it->count;
 
                 set(it->pos.x, it->pos.y, c, true);
-                for (int i=0;i<4;i++) {
-                    for (int r=1;r<it->range;r++) {
+                for (int i = 0; i < 4; i++) {
+                    for (int r = 1; r < it->range; r++) {
                         int x = it->pos.x + dx[i] * r, y = it->pos.y + dy[i] * r;
                         if (x < 0 || x >= width
                             || y < 0 || y >= height
-                            || f.getType(it->pos)==Field::Wall) {
+                            || f.getType(it->pos) == Field::Wall) {
                             break;
                         } else {
                             set(x, y, c, true);
-                            if (f.getType(it->pos)!=Field::Empty
+                            if (f.getType(x, y) != Field::Empty
                                 && !blownBefore(x, y, c)) {
                                 blown[it->owner][c]++;
                                 break;
-                            } else if (ba->find(x, y)!=ba->end()
-                                       &&ba->find(x, y)->count>c) {
+                            } else if (ia->find(x, y) != ia->end()
+                                && !blownBefore(x, y, c)) {
+                                break;
+                            } else if (ba->find(x, y) != ba->end()
+                                       && ba->find(x, y)->count > c) {
                                 ba->find(x, y)->count = c;
                                 q.push(ba->find(x, y));
                                 break;
-                            } else if (ba->find(x, y)!=ba->end()
-                                       &&ba->find(x, y)->count==c) {
-                                break;
-                            } else if (ia->find(x, y)!=ia->end()
-                                       && !blownBefore(x, y, c)) {
+                            } else if (ba->find(x, y) != ba->end()
+                                       && ba->find(x, y)->count == c) {
                                 break;
                             }
                         }
@@ -309,16 +310,12 @@ public:
 
 class State {
 public:
-    State() : dead(false) {
+    State() : dead(false), boxesBroke(0) {
     }
 
     int myId;
     Field f;
     XpCells xpc;
-    int requiredTime[11][13];
-    int bombEfficiency[11][13];
-    int bombEfficiency2[11][13];
-    int beMx, beMy;
     BombArray ba;
     ItemArray ia;
 
@@ -328,113 +325,23 @@ public:
     int boxesBroke;
     bool dead;
     double value;
-    int bombScore;
+    double bombScore;
     int reachableCells;
     int evade;
 
     bool canOccupy(int x, int y, int round) const {
-        if (x<0||x>=f.width||y<0||y>=f.height||f.getType(x, y)!=Field::Empty) return false;
-        return !(ba.find(x, y) != ba.end() && ba.find(x, y)->count >= round);
+        if (x < 0 || x >= f.width || y < 0 || y >= f.height) return false;
+        if (f.getType(x, y) != Field::Empty) return false;
+        return !(ba.find(x, y) != ba.end() && ba.find(x, y)->count > round);
     }
 
-    //void updateReqTime() {
-    void updateReqTimeAndEfficiency() {
-        memset(requiredTime, 0x0f, sizeof(requiredTime));
-        memset(bombEfficiency, 0x00, sizeof(bombEfficiency));
-        memset(bombEfficiency2, 0x00, sizeof(bombEfficiency2));
-        
-        reachableCells = 0;
-        beMx = players[myId].pos.x; beMy = players[myId].pos.y;
-        bombScore = 0;
-
-        queue< pair< unsigned int, pair<int, int> > > q;
-        q.push(make_pair(0, make_pair(players[myId].pos.x,players[myId].pos.y)));
-
-        while(!q.empty()) {
-            auto p = q.front();
-            q.pop();
-
-            if (p.first>=requiredTime[p.second.second][p.second.first]) continue;
-
-            if (p.first > 30) {
-                requiredTime[p.second.second][p.second.first] = 30;
-                continue;
-            }
-
-            requiredTime[p.second.second][p.second.first] = p.first;
-
-            for (int i=0;i<4;i++) {
-                for (int r=1;r<players[myId].xpRange;r++) {
-                    if (!canOccupy(p.second.first+dx[i]*r, p.second.second+dy[i]*r, 0)) {
-                        if (!(p.second.first+dx[i]*r<0||p.second.first+dx[i]*r>=13
-                              ||p.second.second+dy[i]*r<0||p.second.second+dy[i]*r>=11)
-                            &&(f.getType(p.second.first+dx[i]*r, p.second.second+dy[i]*r)!=Field::Wall
-                               &&f.getType(p.second.first+dx[i]*r, p.second.second+dy[i]*r)!=Field::Empty)
-                            /*&&xpc.field[x+dx[i]*r][y+dy[i]*r]==0*/)
-                            bombEfficiency[p.second.second][p.second.first]++;
-                        break;
-                    }
-                }
-            }
-
-            bombEfficiency2[p.second.second][p.second.first]
-                    = bombEfficiency[p.second.second][p.second.first]
-                      * max(0, 30 - max(0,requiredTime[p.second.second][p.second.first]));
-            //cerr << bombEfficiency2[p.second.second][p.second.first] << endl;
-            if (bombEfficiency2[p.second.second][p.second.first]>bombEfficiency2[beMy][beMx]) {
-                beMx = p.second.first;
-                beMy = p.second.second;
-            }
-
-            reachableCells++;
-
-            for (int i=0;i<4;i++) {
-                int nx = p.second.first + dx[i], ny = p.second.second + dy[i];
-                if (canOccupy(nx, ny, p.first+1)) {
-                    q.push(make_pair(p.first+1, make_pair(nx, ny)));
-                }
-            }
+    void updateBombScore() {
+        double res = 0;
+        for (int i=0;i<9;i++) {
+            res += (double)xpc.blown[myId][i] * (double)xpc.blown[myId][i] * (8-i);
         }
 
-        for (auto it = ba.begin();it!=ba.end();it++) {
-            if (it->owner == myId)
-                bombScore += bombEfficiency[it->pos.y][it->pos.x] * bombEfficiency[it->pos.y][it->pos.x] * bombEfficiency[it->pos.y][it->pos.x] * (8 - xpc.firstBlow(it->pos.x, it->pos.y) / 2) * 30;
-        }
-    }
-
-    void updateEfficiency() {
-        beMx = 0; beMy = 0;
-        bombScore = 0;
-
-        for (int y = 0;y < f.height;y++) {
-            for (int x = 0;x < f.width;x++) {
-                bombEfficiency[y][x] = 0;
-                for (int i=0;i<4;i++) {
-                    for (int r=1;r<players[myId].xpRange;r++) {
-                        if (!canOccupy(x+dx[i]*r, y+dy[i]*r, 0)) {
-                            if (!(x+dx[i]*r<0||x+dx[i]*r>=13
-                                ||y+dy[i]*r<0||y+dy[i]*r>=11)
-                                &&(f.getType(x+dx[i]*r, y+dy[i]*r)!=Field::Wall
-                                   &&f.getType(x+dx[i]*r, y+dy[i]*r)!=Field::Empty)
-                                /*&&xpc.field[x+dx[i]*r][y+dy[i]*r]==0*/)
-                                bombEfficiency[y][x]++;
-                            break;
-                        }
-                    }
-                }
-
-                bombEfficiency2[y][x] = bombEfficiency[y][x] * max(0, (30 - ((requiredTime[y][x]>1000)?30:requiredTime[y][x])));
-                if (bombEfficiency2[y][x]>bombEfficiency2[beMy][beMx]) {
-                    beMx = x;
-                    beMy = y;
-                }
-            }
-        }
-        
-        for (auto it = ba.begin();it!=ba.end();it++) {
-            if (it->owner == myId)
-                bombScore += bombEfficiency[it->pos.y][it->pos.x] * bombEfficiency[it->pos.y][it->pos.x] * bombEfficiency[it->pos.y][it->pos.x] * (8 - xpc.firstBlow(it->pos.x, it->pos.y) / 2) * 30;
-        }
+        bombScore = res;
     }
 };
 
@@ -450,22 +357,24 @@ public:
             auto p = q.front();
             q.pop();
 
-            if (!s.canOccupy(p.second.first, p.second.second, p.first)||s.xpc.get(p.second.first, p.second.second, p.first)) {
+            if (s.xpc.get(p.second.first, p.second.second, p.first)) {
                 continue;
             }
 
-            if (p.first-1>s.xpc.lastBlow(p.second.first, p.second.second)) {
-                //cerr << "    " << p.second.first << " " << p.second.second << endl;
+            if (p.first>s.xpc.lastBlow(p.second.first, p.second.second)) {
+                cerr << "    " << p.second.first << " " << p.second.second << endl;
                 res = 1;
                 break;
             }
 
             for (int i=0;i<4;i++) {
                 int nx = p.second.first + dx[i], ny = p.second.second + dy[i];
-                q.push(make_pair(p.first+1, make_pair(nx, ny)));
+                if(s.canOccupy(nx, ny, p.first+1) && (!s.xpc.get(nx, ny, p.first+1)))
+                    q.push(make_pair(p.first+1, make_pair(nx, ny)));
             }
 
-            q.push(make_pair(p.first+1, p.second));
+            if (!s.xpc.get(p.second.first, p.second.second, p.first+1))
+                q.push(make_pair(p.first+1, p.second));
         }
 
         return res;
@@ -478,34 +387,41 @@ public:
         int memo[11][13] = {};
         memset(memo, 0xff, sizeof(memo));
 
-        deque< pair< int, pair<int, int> > > q;
-        q.push_back(make_pair(0, make_pair(s.players[player].pos.x,s.players[player].pos.y)));
+        deque<pair<int, pair<int, int> > > q;
+        q.push_back(make_pair(0, make_pair(s.players[player].pos.x, s.players[player].pos.y)));
 
         //memo[s.players[player].pos.y][s.players[player].pos.x] = 0;
 
-        while(!q.empty()) {
+        while (!q.empty()) {
             qcnt++;
             auto p = q.front();
             q.pop_front();
 
-            if (!s.canOccupy(p.second.first, p.second.second, p.first)||s.xpc.get(p.second.first, p.second.second, p.first)) {
+            if (!s.canOccupy(p.second.first, p.second.second, p.first) ||
+                s.xpc.get(p.second.first, p.second.second, p.first)) {
                 continue;
             }
 
-            if (memo[p.second.second][p.second.first]==max(0, s.xpc.prevBlow(p.second.first, p.second.second, p.first)))
+            if (memo[p.second.second][p.second.first] ==
+                max(0, s.xpc.prevBlow(p.second.first, p.second.second, p.first)))
                 continue;
-            else memo[p.second.second][p.second.first] = max(0, s.xpc.prevBlow(p.second.first, p.second.second, p.first));
+            else
+                memo[p.second.second][p.second.first] = max(0,
+                                                            s.xpc.prevBlow(p.second.first, p.second.second, p.first));
 
-            if (s.xpc.nextBlow(p.second.first, p.second.second, p.first)==-1) {
+            if (s.xpc.nextBlow(p.second.first, p.second.second, p.first) == -1) {
                 res = 1;
                 //cerr << "evade: " << p.second.first << " " << p.second.second << " " << p.first << endl;
                 break;
             }
 
-            for (int i=0;i<4;i++) {
+            for (int i = 0; i < 4; i++) {
                 int nx = p.second.first + dx[i], ny = p.second.second + dy[i];
-                for (int n = p.first;n!=-1&&n<s.xpc.nextBlow(p.second.first, p.second.second, p.first);n = s.xpc.nextBlow(nx, ny, n)) {
-                    q.insert(lower_bound(q.begin(), q.end(), make_pair(n + 1, make_pair(nx, ny)), greater< pair< int, pair<int, int> > >()), make_pair(n + 1, make_pair(nx, ny)));
+                for (int n = p.first;
+                     n != -1 && n < s.xpc.nextBlow(p.second.first, p.second.second, p.first); n = s.xpc.nextBlow(nx, ny,
+                                                                                                                 n)) {
+                    q.insert(lower_bound(q.begin(), q.end(), make_pair(n + 1, make_pair(nx, ny)),
+                                         greater<pair<int, pair<int, int> > >()), make_pair(n + 1, make_pair(nx, ny)));
                 }
             }
         }
@@ -515,17 +431,16 @@ public:
      */
 
     static double evaluate(const State &s) {
-        if (s.dead||s.evade==0) return 0;
+        if (s.players[s.myId].dead || s.evade == 0) return 0;
         double res = 0;
-        res += s.bombEfficiency2[s.beMy][s.beMx] * 10;
-        res += s.bombScore * 1000;
-        res += s.boxesBroke * 300;
-        res += (double)s.evade * 10.0;
+        res += s.bombScore * 100;
+        res += s.boxesBroke * s.boxesBroke * 800;
+        res += (double) s.evade * 10.0;
         //res += (double)s.reachableCells * 10.0;
         res += s.players[s.myId].xpRange * 900.0 + s.players[s.myId].numBombs * 1200.0;
-        for (int i=0;i<4;i++) {
-            if (i!=s.myId) res += (11.0 - abs(s.players[i].pos.x-6) - abs(s.players[i].pos.y-5)) * 100.0;
-            else res += (abs(s.players[i].pos.x-6) + abs(s.players[i].pos.y-5)) * 40.0;
+        for (int i = 0; i < 4; i++) {
+            if (i != s.myId) res += (11.0 - abs(s.players[i].pos.x - 6) - abs(s.players[i].pos.y - 5)) * 100.0;
+            else res += (abs(s.players[i].pos.x - 6) + abs(s.players[i].pos.y - 5)) * 40.0;
         }
         return res;
     }
@@ -535,8 +450,8 @@ class StateComparator {
 public:
     bool operator()(const pair<State *, int> &l, const pair<State *, int> &r) const {
         if (abs(StateEvaluator::evaluate(*l.first) - StateEvaluator::evaluate(*r.first)) < 0.01) {
-            if ((l.second > 4 && r.second > 4)||(l.second < 5 && r.second < 5)) return l.second < r.second;
-            return rand()%2==0;
+            if ((l.second > 4 && r.second > 4) || (l.second < 5 && r.second < 5)) return l.second < r.second;
+            return rand() % 2 == 0;
         }
         return StateEvaluator::evaluate(*l.first) > StateEvaluator::evaluate(*r.first);
     }
@@ -559,34 +474,37 @@ const Action actions[10] = {
 State *blow(const State &s) {
     State *res = new State(s);
 
-    for (auto it = res->ba.begin();it!=res->ba.end();it++) {
+    for (auto it = res->ba.begin(); it != res->ba.end(); it++) {
         it->count--;
     }
 
     res->xpc.update(&(res->ba), &(res->ia), (res->f));
 
-    for (int y=0;y<13;y++) {
-        for (int x=0;x<11;x++) {
-            if (res->xpc.get(x, y, 0)==true) {
-                if (res->f.getType(x, y)==Field::EmptyBox) {
+    for (int y = 0; y < 13; y++) {
+        for (int x = 0; x < 11; x++) {
+            if (res->xpc.get(x, y, 0)) {
+                if (res->f.getType(x, y) == Field::EmptyBox) {
                     res->f.setType(x, y, Field::Empty);
                     res->boxesBroke++;
-                } else if (res->f.getType(x, y)==Field::ItemBox1) {
+                } else if (res->f.getType(x, y) == Field::ItemBox1) {
                     res->f.setType(x, y, Field::Empty);
                     res->ia.push(Item(Vector2i(x, y), 1));
                     res->boxesBroke++;
-                } else if (res->f.getType(x, y)==Field::ItemBox2) {
+                } else if (res->f.getType(x, y) == Field::ItemBox2) {
                     res->f.setType(x, y, Field::Empty);
                     res->ia.push(Item(Vector2i(x, y), 2));
                     res->boxesBroke++;
-                } else if (res->ia.find(x, y)!=res->ia.end()) {
+                } else if (res->ia.find(x, y) != res->ia.end()) {
                     res->ia.erase(res->ia.find(x, y));
-                } else if (res->ba.find(x, y)!=res->ba.end()) {
-                    res->players[res->ba.find(x, y)->owner].remainingBombs+=1.0;
+                } else if (res->ba.find(x, y) != res->ba.end()) {
+                    res->players[res->ba.find(x, y)->owner].remainingBombs += 1.0;
                     res->ba.erase(res->ba.find(x, y));
-                } else if (res->players[res->myId].pos.x==x&&res->players[res->myId].pos.y==y) {
-                    res->dead = true;
                 }
+
+                for (int i=0;i<4;i++)
+                    if (res->players[i].pos.x == x && res->players[i].pos.y == y) {
+                        res->players[i].dead = true;
+                    }
             }
         }
     }
@@ -596,10 +514,11 @@ State *blow(const State &s) {
 
 State *act(const State &s, char actionId) {
     if (actionId >= 5 && (s.players[s.myId].remainingBombs < 1.0
-                          ||s.ba.find(s.players[s.myId].pos.x,s.players[s.myId].pos.y)!=s.ba.end())) return nullptr;
+                          || s.ba.find(s.players[s.myId].pos.x, s.players[s.myId].pos.y) != s.ba.end()))
+        return nullptr;
     if (actions[actionId].dir < 4
-        && !s.canOccupy(s.players[s.myId].pos.x+dx[actions[actionId].dir],
-                        s.players[s.myId].pos.y+dy[actions[actionId].dir],0)) {
+        && !s.canOccupy(s.players[s.myId].pos.x + dx[actions[actionId].dir],
+                        s.players[s.myId].pos.y + dy[actions[actionId].dir], 0)) {
         return nullptr;
     }
 
@@ -644,8 +563,7 @@ State *act(const State &s, char actionId) {
 
     el2 = clock();
 
-    //res->updateReqTime();
-    res->updateReqTimeAndEfficiency();
+    res->updateBombScore();
 
     el3 = clock();
 
@@ -657,10 +575,10 @@ State *act(const State &s, char actionId) {
 
     cend = clock();
 
-    elS1 += (double)(el1-start)/CLOCKS_PER_SEC;
-    elS2 += (double)(el2-el1)/CLOCKS_PER_SEC;
-    elS3 += (double)(el3-el2)/CLOCKS_PER_SEC;
-    elS4 += (double)(cend-el3)/CLOCKS_PER_SEC;
+    elS1 += (double) (el1 - start) / CLOCKS_PER_SEC;
+    elS2 += (double) (el2 - el1) / CLOCKS_PER_SEC;
+    elS3 += (double) (el3 - el2) / CLOCKS_PER_SEC;
+    elS4 += (double) (cend - el3) / CLOCKS_PER_SEC;
 
     return res;
 }
@@ -683,10 +601,10 @@ int main() {
     while (1) {
         qcnt = 0;
 
-        deque<pair<State *, int> > beam[BEAM_DEPTH+1];
+        deque<pair<State *, int> > beam[BEAM_DEPTH + 1];
 
-        current.ba.s=0;
-        current.ia.s=0;
+        current.ba.s = 0;
+        current.ia.s = 0;
         current.boxesBroke = 0;
         for (int i = 0; i < height; i++) {
             string row;
@@ -745,13 +663,19 @@ int main() {
 
         for (char i = 0; i < 10; i++) {
             if ((nextState = act(*b, i)) == nullptr) continue;
-            if (nextState->dead || nextState->evade==0) continue;
+            cerr << (int)i << ": " << nextState->evade << endl;
+            if (nextState->players[myId].dead || nextState->evade == 0) {
+                delete nextState;
+                continue;
+            }
             beam[0].insert(lower_bound(beam[0].begin(),
                                        beam[0].end(),
                                        make_pair(nextState, i),
                                        StateComparator()),
                            make_pair(nextState, i));
         }
+
+        delete b;
 
         elS1 = 0;
         elS2 = 0;
@@ -773,7 +697,10 @@ int main() {
 
                 for (char j = 0; j < 10; j++) {
                     if ((nextState = act(*(st.first), j)) != nullptr) {
-                        if (nextState->dead || nextState->evade==0) continue;
+                        if (nextState->players[myId].dead || nextState->evade == 0) {
+                            delete nextState;
+                            continue;
+                        }
                         beam[i + 1].insert(
                                 lower_bound(beam[i + 1].begin(), beam[i + 1].end(), make_pair(nextState, st.second),
                                             StateComparator()), make_pair(nextState, st.second));
@@ -804,10 +731,10 @@ int main() {
             sol[item.second] += evalResult * hoge;
             cnt[item.second]++;
 
-            cerr << item.second << " "
-                 << evalResult << endl;
-                 
-            //hoge *= 0.93;
+            //cerr << item.second << " "
+            //     << evalResult << endl;
+
+            hoge *= 0.9;
         }
 
         int ans = 0;
@@ -820,7 +747,7 @@ int main() {
 
         cerr << "qcnt: " << qcnt << endl;
         current.xpc.update(&current.ba, &current.ia, current.f);
-        cerr << current.xpc.field[6][9] << endl;
+        cerr << (int)current.xpc.field[1][6] << endl;
 
         cout << (actions[ans].place ? "BOMB " : "MOVE ")
              << current.players[myId].pos.x + ((ans % 5 != 4) ? dx[actions[ans].dir] : 0)
