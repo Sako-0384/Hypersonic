@@ -11,10 +11,7 @@
     </ADDITIONAL_GENERATION_ENVIRONMENT>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="4901f05a-0780-48dc-8b71-cc3284922752" name="Default" comment="">
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/main.cpp" afterPath="$PROJECT_DIR$/src/main.cpp" />
-    </list>
+    <list default="true" id="4901f05a-0780-48dc-8b71-cc3284922752" name="Default" comment="" />
     <ignored path="Hypersonic.iws" />
     <ignored path=".idea/workspace.xml" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -382,7 +379,7 @@
       <workItem from="1474897310614" duration="353000" />
       <workItem from="1474897861972" duration="9446000" />
       <workItem from="1474918565457" duration="65905000" />
-      <workItem from="1475081469285" duration="62769000" />
+      <workItem from="1475081469285" duration="62895000" />
     </task>
     <task id="LOCAL-00001" summary="first commit&#10;">
       <created>1474896535138</created>
@@ -514,7 +511,7 @@
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="139737000" />
+    <option name="totallyTimeSpent" value="139863000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1440" height="900" extended-state="0" />
